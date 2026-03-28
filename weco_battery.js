@@ -179,8 +179,9 @@ class WecoBatteryCard extends HTMLElement {
           .soc-big   { font-size: 2.4em; font-weight: bold; line-height: 1; }
           .soc-label { font-size: 0.7em; color: var(--secondary-text-color); text-transform: uppercase; margin-top: 4px; }
           .power-pill  { display: flex; flex-direction: column; align-items: flex-end; }
-          .power-val   { font-size: 1.3em; font-weight: bold; }
-          .power-label { font-size: 0.7em; color: var(--secondary-text-color); text-transform: uppercase; }
+          .power-val    { font-size: 1.3em; font-weight: bold; }
+          .power-label  { font-size: 0.7em; color: var(--secondary-text-color); text-transform: uppercase; }
+          .status-label { font-size: 1.1em; font-weight: bold; margin-bottom: 2px; }
 
           .stats-row { display: grid; gap: 8px; background: rgba(128,128,128,0.08); padding: 12px 8px; border-radius: 8px; margin-bottom: 15px; }
           .stats-row.cols-3 { grid-template-columns: repeat(3, 1fr); }
@@ -277,6 +278,7 @@ class WecoBatteryCard extends HTMLElement {
         if (mode === 'minimal') {
             const socEntity = config.battery_soc ? ` data-entity="${config.battery_soc}"` : '';
             const pwrEntity = config.battery_power ? ` data-entity="${config.battery_power}"` : '';
+            const status = this._chargeStatus(power);
             html = `
         <div class="minimal-row">
           <div class="stat"${socEntity}>
@@ -284,8 +286,8 @@ class WecoBatteryCard extends HTMLElement {
             <div class="soc-label">SOC</div>
           </div>
           <div class="power-pill"${pwrEntity}>
-            <div class="power-val">${this._val(power)}${this._unit(power)}</div>
-            <div class="power-label">Power</div>
+            <div class="status-label" style="color:${status.color}">${status.icon} ${status.label}</div>
+            <div class="power-val" style="color:${status.color}">${this._val(power)}${this._unit(power)}</div>
           </div>
         </div>`;
         }
@@ -352,6 +354,16 @@ class WecoBatteryCard extends HTMLElement {
             detail: { replace: false },
         }));
     }
+    _chargeStatus(power) {
+        const w = power ? parseFloat(power.state) : NaN;
+        if (isNaN(w))
+            return { label: '---', icon: '—', color: 'var(--secondary-text-color)' };
+        if (w > 0)
+            return { label: 'Carica', icon: '▲', color: '#73bf69' };
+        if (w < 0)
+            return { label: 'Scarica', icon: '▼', color: '#f2495c' };
+        return { label: 'Inattivo', icon: '●', color: 'var(--secondary-text-color)' };
+    }
     _val(entity) {
         return entity ? entity.state : '---';
     }
@@ -371,3 +383,13 @@ class WecoBatteryCard extends HTMLElement {
     }
 }
 customElements.define('weco-battery-card', WecoBatteryCard);
+// ── Registrazione nel picker di HA ──────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _win = window;
+_win.customCards = _win.customCards || [];
+_win.customCards.push({
+    type: 'weco-battery-card',
+    name: 'WECO Battery card',
+    description: 'Mostra lo stato della batteria WECO',
+    preview: true,
+});

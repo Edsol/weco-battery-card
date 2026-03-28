@@ -66,27 +66,27 @@ class WecoBatteryCardEditor extends HTMLElement {
 
     this.innerHTML = `
       <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
-        <ha-textfield id="f-title"   label="Titolo"></ha-textfield>
+        <ha-textfield id="f-title"   label="Title"></ha-textfield>
 
-        <ha-select id="f-mode" label="Modalità" fixedMenuPosition>
-          <mwc-list-item value="minimal">Minimal – solo SOC</mwc-list-item>
+        <ha-select id="f-mode" label="Mode" fixedMenuPosition>
+          <mwc-list-item value="minimal">Minimal – SOC only</mwc-list-item>
           <mwc-list-item value="basic">Basic – SOC, Power, Current</mwc-list-item>
-          <mwc-list-item value="extended">Extended – tutto + celle</mwc-list-item>
+          <mwc-list-item value="extended">Extended – everything + cells</mwc-list-item>
         </ha-select>
 
-        <ha-entity-picker id="f-soc"     label="Entità SOC"     allow-custom-entity></ha-entity-picker>
-        <ha-entity-picker id="f-power"   label="Entità Power"   allow-custom-entity></ha-entity-picker>
-        <ha-entity-picker id="f-current" label="Entità Current" allow-custom-entity></ha-entity-picker>
-        <ha-entity-picker id="f-voltage" label="Entità Voltage" allow-custom-entity></ha-entity-picker>
+        <ha-entity-picker id="f-soc"     label="SOC Entity"     allow-custom-entity></ha-entity-picker>
+        <ha-entity-picker id="f-power"   label="Power Entity"   allow-custom-entity></ha-entity-picker>
+        <ha-entity-picker id="f-current" label="Current Entity" allow-custom-entity></ha-entity-picker>
+        <ha-entity-picker id="f-voltage" label="Voltage Entity" allow-custom-entity></ha-entity-picker>
 
-        <ha-entity-picker id="f-cell" label="Prima cella (es: sensor.xxx_cell_01)" allow-custom-entity></ha-entity-picker>
+        <ha-entity-picker id="f-cell" label="First cell (e.g.: sensor.xxx_cell_01)" allow-custom-entity></ha-entity-picker>
         <p style="font-size:0.75em; color:var(--secondary-text-color); margin:-4px 0 0 0;">
-          Seleziona la cella 01 — le restanti (02–16) vengono derivate automaticamente.
+          Select cell 01 — the others (02–16) are derived automatically.
         </p>
 
-        <ha-device-picker id="f-device-id" label="Dispositivo MQTT (link nel titolo)"></ha-device-picker>
+        <ha-device-picker id="f-device-id" label="MQTT Device (link in title)"></ha-device-picker>
 
-        <ha-formfield label="Mostra data/ora ultimo aggiornamento">
+        <ha-formfield label="Show last update date/time">
           <ha-switch id="f-show-last-updated"></ha-switch>
         </ha-formfield>
       </div>`;
@@ -199,11 +199,11 @@ class WecoBatteryCard extends HTMLElement {
   }
 
   static getStubConfig(): WecoBatteryConfig {
-    return { title: 'Batteria WECO', mode: 'extended' };
+    return { title: 'WECO Battery', mode: 'extended' };
   }
 
   setConfig(config: WecoBatteryConfig): void {
-    if (!config) throw new Error('Configurazione non valida');
+    if (!config) throw new Error('Configuration not valid');
     this.config = config;
     if (this._hass) this._render();
   }
@@ -226,8 +226,9 @@ class WecoBatteryCard extends HTMLElement {
           .soc-big   { font-size: 2.4em; font-weight: bold; line-height: 1; }
           .soc-label { font-size: 0.7em; color: var(--secondary-text-color); text-transform: uppercase; margin-top: 4px; }
           .power-pill  { display: flex; flex-direction: column; align-items: flex-end; }
-          .power-val   { font-size: 1.3em; font-weight: bold; }
-          .power-label { font-size: 0.7em; color: var(--secondary-text-color); text-transform: uppercase; }
+          .power-val    { font-size: 1.3em; font-weight: bold; }
+          .power-label  { font-size: 0.7em; color: var(--secondary-text-color); text-transform: uppercase; }
+          .status-label { font-size: 1.1em; font-weight: bold; margin-bottom: 2px; }
 
           .stats-row { display: grid; gap: 8px; background: rgba(128,128,128,0.08); padding: 12px 8px; border-radius: 8px; margin-bottom: 15px; }
           .stats-row.cols-3 { grid-template-columns: repeat(3, 1fr); }
@@ -288,7 +289,7 @@ class WecoBatteryCard extends HTMLElement {
 
     // Titolo
     if (this.titleEl) {
-      this.titleEl.textContent = config.title ?? 'Batteria WECO';
+      this.titleEl.textContent = config.title ?? 'WECO Battery';
       if (config.device_id) {
         this.titleEl.classList.add('has-link');
         this.titleEl.onclick = () => this._navigateToDevice(config.device_id!);
@@ -310,7 +311,7 @@ class WecoBatteryCard extends HTMLElement {
         const ref = soc ?? power ?? current ?? voltage;
         if (ref?.last_updated) {
           const d = new Date(ref.last_updated);
-          this.lastUpdatedEl.textContent = `Aggiornato: ${d.toLocaleString()}`;
+          this.lastUpdatedEl.textContent = `Updated: ${d.toLocaleString()}`;
           this.lastUpdatedEl.style.display = '';
         } else {
           this.lastUpdatedEl.style.display = 'none';
@@ -325,6 +326,7 @@ class WecoBatteryCard extends HTMLElement {
     if (mode === 'minimal') {
       const socEntity = config.battery_soc ? ` data-entity="${config.battery_soc}"` : '';
       const pwrEntity = config.battery_power ? ` data-entity="${config.battery_power}"` : '';
+      const status = this._chargeStatus(power);
       html = `
         <div class="minimal-row">
           <div class="stat"${socEntity}>
@@ -332,8 +334,8 @@ class WecoBatteryCard extends HTMLElement {
             <div class="soc-label">SOC</div>
           </div>
           <div class="power-pill"${pwrEntity}>
-            <div class="power-val">${this._val(power)}${this._unit(power)}</div>
-            <div class="power-label">Power</div>
+            <div class="status-label" style="color:${status.color}">${status.icon} ${status.label}</div>
+            <div class="power-val" style="color:${status.color}">${this._val(power)}${this._unit(power)}</div>
           </div>
         </div>`;
 
@@ -407,6 +409,14 @@ class WecoBatteryCard extends HTMLElement {
     }));
   }
 
+  private _chargeStatus(power?: HassEntity): { label: string; icon: string; color: string } {
+    const w = power ? parseFloat(power.state) : NaN;
+    if (isNaN(w))   return { label: '---',     icon: '—',  color: 'var(--secondary-text-color)' };
+    if (w > 0)      return { label: 'Charge',  icon: '▲',  color: '#73bf69' };
+    if (w < 0)      return { label: 'Discharge', icon: '▼',  color: '#f2495c' };
+    return          { label: 'Idle',        icon: '●',  color: 'var(--secondary-text-color)' };
+  }
+
   private _val(entity?: HassEntity): string {
     return entity ? entity.state : '---';
   }
@@ -430,3 +440,14 @@ class WecoBatteryCard extends HTMLElement {
 }
 
 customElements.define('weco-battery-card', WecoBatteryCard);
+
+// ── Registrazione nel picker di HA ──────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _win = window as any;
+_win.customCards = _win.customCards || [];
+_win.customCards.push({
+  type: 'weco-battery-card',
+  name: 'WECO Battery',
+  description: 'Displays the status of the WECO battery',
+  preview: true,
+});
