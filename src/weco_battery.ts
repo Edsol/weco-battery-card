@@ -250,15 +250,13 @@ class WecoBatteryCard extends HTMLElement {
           .header.has-link::after { content: '↗'; font-size: 0.7em; opacity: 0.6; }
           .last-updated { font-size: 0.72em; color: var(--secondary-text-color); margin-bottom: 12px; margin-top: 4px; }
 
-          .stats-row { display: grid; gap: 8px; background: rgba(128,128,128,0.08); padding: 12px 8px; border-radius: 8px; margin-bottom: 15px; }
+          .stats-row { display: grid; gap: 8px; background: rgba(128,128,128,0.08); padding: 12px 8px; border-radius: 8px; margin-bottom: 15px; overflow: hidden; }
           .stats-row.cols-1 { grid-template-columns: 1fr; }
           .stats-row.cols-2 { grid-template-columns: repeat(2, 1fr); }
           .stats-row.cols-3 { grid-template-columns: repeat(3, 1fr); }
           .stats-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
-          .stat        { text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-          .stat-value  { font-size: 1.2em; font-weight: bold; white-space: nowrap; }
-          .stat-label  { font-size: 0.7em; color: var(--secondary-text-color); text-transform: uppercase; margin-top: 4px;
-                         max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .stat        { text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; }
+          .stat-value  { font-size: 1.2em; font-weight: bold; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
           [data-entity] { cursor: pointer; }
           [data-entity]:hover { opacity: 0.75; }
@@ -429,9 +427,8 @@ class WecoBatteryCard extends HTMLElement {
 
   private _stat(entity: HassEntity | undefined, label: string, entityId?: string): string {
     const attr = entityId ? ` data-entity="${entityId}"` : '';
-    return `<div class="stat"${attr}>
+    return `<div class="stat"${attr} title="${label}">
       <span class="stat-value">${this._val(entity)}${this._unit(entity)}</span>
-      <span class="stat-label" title="${label}">${label}</span>
     </div>`;
   }
 
