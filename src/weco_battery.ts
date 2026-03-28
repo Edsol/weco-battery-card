@@ -8,19 +8,24 @@ interface HassEntity {
   };
 }
 
+interface EntityRegistryEntry {
+  entity_id: string;
+  device_id?: string;
+}
+
 interface HomeAssistant {
   states: Record<string, HassEntity | undefined>;
+  entities?: Record<string, EntityRegistryEntry>;
 }
 
 interface WecoBatteryConfig {
   title?: string;
-  mode?: 'minimal' | 'basic' | 'extended';
-  battery_soc?: string;
-  battery_power?: string;
-  battery_current?: string;
-  battery_voltage?: string;
-  battery_cell_first?: string;
   device_id?: string;
+  sensor_1?: string;
+  sensor_2?: string;
+  sensor_3?: string;
+  sensor_4?: string;
+  show_cells?: boolean;
   show_last_updated?: boolean;
 }
 
@@ -30,6 +35,7 @@ interface HaElement extends HTMLElement {
   value?: string;
   configValue?: string;
   checked?: boolean;
+  includeEntities?: string[];
 }
 
 
@@ -46,6 +52,7 @@ class WecoBatteryCardEditor extends HTMLElement {
       if (this._hass) this._buildDOM();
     } else {
       this._applyValues();
+      this._updateEntityPickers();
     }
   }
 
@@ -57,7 +64,23 @@ class WecoBatteryCardEditor extends HTMLElement {
       this.querySelectorAll<HaElement>('ha-entity-picker, ha-device-picker').forEach(el => {
         el.hass = hass;
       });
+      this._updateEntityPickers();
     }
+  }
+
+  private _getDeviceEntities(): string[] | undefined {
+    const deviceId = this._config?.device_id;
+    if (!deviceId || !this._hass?.entities) return undefined;
+    return Object.values(this._hass.entities)
+      .filter(e => e.device_id === deviceId)
+      .map(e => e.entity_id);
+  }
+
+  private _updateEntityPickers(): void {
+    const entityIds = this._getDeviceEntities();
+    this.querySelectorAll<HaElement>('.sensor-picker').forEach(picker => {
+      picker.includeEntities = entityIds ?? undefined;
+    });
   }
 
   private _buildDOM(): void {
@@ -66,42 +89,44 @@ class WecoBatteryCardEditor extends HTMLElement {
 
     this.innerHTML = `
       <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
-        <ha-textfield id="f-title"   label="Title"></ha-textfield>
+        <ha-textfield id="f-title" label="Title"></ha-textfield>
 
-        <ha-select id="f-mode" label="Mode" fixedMenuPosition>
-          <mwc-list-item value="minimal">Minimal – SOC only</mwc-list-item>
-          <mwc-list-item value="basic">Basic – SOC, Power, Current</mwc-list-item>
-          <mwc-list-item value="extended">Extended – everything + cells</mwc-list-item>
-        </ha-select>
+        <ha-device-picker id="f-device-id" label="MQTT Device"></ha-device-picker>
 
-        <ha-entity-picker id="f-soc"     label="SOC Entity"     allow-custom-entity></ha-entity-picker>
-        <ha-entity-picker id="f-power"   label="Power Entity"   allow-custom-entity></ha-entity-picker>
-        <ha-entity-picker id="f-current" label="Current Entity" allow-custom-entity></ha-entity-picker>
-        <ha-entity-picker id="f-voltage" label="Voltage Entity" allow-custom-entity></ha-entity-picker>
-
-        <ha-entity-picker id="f-cell" label="First cell (e.g.: sensor.xxx_cell_01)" allow-custom-entity></ha-entity-picker>
-        <p style="font-size:0.75em; color:var(--secondary-text-color); margin:-4px 0 0 0;">
-          Select cell 01 — the others (02–16) are derived automatically.
+        <div style="font-size: 0.85em; color: var(--secondary-text-color); font-weight: 500;
+                    border-top: 1px solid var(--divider-color); padding-top: 10px; margin-top: 2px;">
+          Sensors (up to 4)
+        </div>
+        <p style="font-size:0.75em; color:var(--secondary-text-color); margin:-6px 0 0 0;">
+          Select the MQTT device first to filter available sensors.
         </p>
 
-        <ha-device-picker id="f-device-id" label="MQTT Device (link in title)"></ha-device-picker>
+        <ha-entity-picker id="f-sensor-1" class="sensor-picker" label="Sensor 1" allow-custom-entity></ha-entity-picker>
+        <ha-entity-picker id="f-sensor-2" class="sensor-picker" label="Sensor 2" allow-custom-entity></ha-entity-picker>
+        <ha-entity-picker id="f-sensor-3" class="sensor-picker" label="Sensor 3" allow-custom-entity></ha-entity-picker>
+        <ha-entity-picker id="f-sensor-4" class="sensor-picker" label="Sensor 4" allow-custom-entity></ha-entity-picker>
+
+        <ha-formfield label="Show cell voltage grid">
+          <ha-switch id="f-show-cells"></ha-switch>
+        </ha-formfield>
+        <p style="font-size:0.75em; color:var(--secondary-text-color); margin:-6px 0 0 0;">
+          Cell voltages (cell_1 … cell_16) are detected automatically from the selected device.
+        </p>
 
         <ha-formfield label="Show last update date/time">
           <ha-switch id="f-show-last-updated"></ha-switch>
         </ha-formfield>
       </div>`;
 
-    // configValue come proprietà JS — non funziona tramite attributo in innerHTML
     const configKeys: Record<string, keyof WecoBatteryConfig> = {
-      '#f-title':              'title',
-      '#f-mode':               'mode',
-      '#f-soc':                'battery_soc',
-      '#f-power':              'battery_power',
-      '#f-current':            'battery_current',
-      '#f-voltage':            'battery_voltage',
-      '#f-cell':               'battery_cell_first',
-      '#f-device-id':          'device_id',
-      '#f-show-last-updated':  'show_last_updated',
+      '#f-title':             'title',
+      '#f-device-id':         'device_id',
+      '#f-sensor-1':          'sensor_1',
+      '#f-sensor-2':          'sensor_2',
+      '#f-sensor-3':          'sensor_3',
+      '#f-sensor-4':          'sensor_4',
+      '#f-show-cells':        'show_cells',
+      '#f-show-last-updated': 'show_last_updated',
     };
     Object.entries(configKeys).forEach(([sel, key]) => {
       const el = this.querySelector<HaElement>(sel);
@@ -109,14 +134,10 @@ class WecoBatteryCardEditor extends HTMLElement {
     });
 
     this._applyValues();
+    this._updateEntityPickers();
 
     this.querySelectorAll<HaElement>('ha-textfield').forEach(el => {
       el.addEventListener('change', ev => this._valueChanged(ev as Event));
-    });
-    // ha-select emette value-changed, non change
-    this.querySelectorAll<HaElement>('ha-select').forEach(el => {
-      el.addEventListener('value-changed', ev => this._valueChanged(ev as Event));
-      el.addEventListener('closed', ev => ev.stopPropagation());
     });
     this.querySelectorAll<HaElement>('ha-entity-picker, ha-device-picker').forEach(el => {
       el.addEventListener('value-changed', ev => this._valueChanged(ev as Event));
@@ -137,13 +158,14 @@ class WecoBatteryCardEditor extends HTMLElement {
     };
 
     setProp('#f-title',     c.title);
-    setProp('#f-mode',      c.mode ?? 'extended');
-    setProp('#f-soc',       c.battery_soc);
-    setProp('#f-power',     c.battery_power);
-    setProp('#f-current',   c.battery_current);
-    setProp('#f-voltage',   c.battery_voltage);
-    setProp('#f-cell',      c.battery_cell_first);
     setProp('#f-device-id', c.device_id);
+    setProp('#f-sensor-1',  c.sensor_1);
+    setProp('#f-sensor-2',  c.sensor_2);
+    setProp('#f-sensor-3',  c.sensor_3);
+    setProp('#f-sensor-4',  c.sensor_4);
+
+    const swCells = this.querySelector<HaElement>('#f-show-cells');
+    if (swCells) swCells.checked = c.show_cells ?? true;
 
     const sw = this.querySelector<HaElement>('#f-show-last-updated');
     if (sw) sw.checked = c.show_last_updated ?? false;
@@ -154,8 +176,6 @@ class WecoBatteryCardEditor extends HTMLElement {
       });
     }
 
-    // MWC elements (ha-select) can fire value-changed asynchronously after
-    // value is set programmatically — keep the guard active for one RAF cycle
     requestAnimationFrame(() => { this._updatingValues = false; });
   }
 
@@ -175,8 +195,16 @@ class WecoBatteryCardEditor extends HTMLElement {
     }
     if (this._config[configValue] === value) return;
 
+    const newConfig = { ...this._config, [configValue]: value };
+    this._config = newConfig;
+
+    // Se cambia il dispositivo, aggiorna il filtro delle entity picker
+    if (configValue === 'device_id') {
+      this._updateEntityPickers();
+    }
+
     this.dispatchEvent(new CustomEvent('config-changed', {
-      detail: { config: { ...this._config, [configValue]: value } },
+      detail: { config: newConfig },
       bubbles: true,
       composed: true,
     }));
@@ -199,7 +227,7 @@ class WecoBatteryCard extends HTMLElement {
   }
 
   static getStubConfig(): WecoBatteryConfig {
-    return { title: 'WECO Battery', mode: 'extended' };
+    return { title: 'WECO Battery' };
   }
 
   setConfig(config: WecoBatteryConfig): void {
@@ -222,20 +250,15 @@ class WecoBatteryCard extends HTMLElement {
           .header.has-link::after { content: '↗'; font-size: 0.7em; opacity: 0.6; }
           .last-updated { font-size: 0.72em; color: var(--secondary-text-color); margin-bottom: 12px; margin-top: 4px; }
 
-          .minimal-row { display: flex; align-items: center; justify-content: space-between; background: rgba(128,128,128,0.08); padding: 14px 16px; border-radius: 8px; }
-          .soc-big   { font-size: 2.4em; font-weight: bold; line-height: 1; }
-          .soc-label { font-size: 0.7em; color: var(--secondary-text-color); text-transform: uppercase; margin-top: 4px; }
-          .power-pill  { display: flex; flex-direction: column; align-items: flex-end; }
-          .power-val    { font-size: 1.3em; font-weight: bold; }
-          .power-label  { font-size: 0.7em; color: var(--secondary-text-color); text-transform: uppercase; }
-          .status-label { font-size: 1.1em; font-weight: bold; margin-bottom: 2px; }
-
           .stats-row { display: grid; gap: 8px; background: rgba(128,128,128,0.08); padding: 12px 8px; border-radius: 8px; margin-bottom: 15px; }
+          .stats-row.cols-1 { grid-template-columns: 1fr; }
+          .stats-row.cols-2 { grid-template-columns: repeat(2, 1fr); }
           .stats-row.cols-3 { grid-template-columns: repeat(3, 1fr); }
           .stats-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
           .stat        { text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
           .stat-value  { font-size: 1.2em; font-weight: bold; white-space: nowrap; }
-          .stat-label  { font-size: 0.7em; color: var(--secondary-text-color); text-transform: uppercase; margin-top: 4px; }
+          .stat-label  { font-size: 0.7em; color: var(--secondary-text-color); text-transform: uppercase; margin-top: 4px;
+                         max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
           [data-entity] { cursor: pointer; }
           [data-entity]:hover { opacity: 0.75; }
@@ -285,7 +308,6 @@ class WecoBatteryCard extends HTMLElement {
   private _render(): void {
     if (!this.config || !this._hass) return;
     const config = this.config;
-    const mode = config.mode ?? 'extended';
 
     // Titolo
     if (this.titleEl) {
@@ -300,15 +322,16 @@ class WecoBatteryCard extends HTMLElement {
     }
 
     const st = (id?: string): HassEntity | undefined => id ? this._hass!.states[id] : undefined;
-    const soc     = st(config.battery_soc);
-    const power   = st(config.battery_power);
-    const current = st(config.battery_current);
-    const voltage = st(config.battery_voltage);
 
-    // Ultimo aggiornamento
+    // Sensori configurati (filtra slot vuoti)
+    const sensorIds = [config.sensor_1, config.sensor_2, config.sensor_3, config.sensor_4]
+      .filter((s): s is string => !!s);
+    const sensors = sensorIds.map(id => ({ id, entity: st(id) }));
+
+    // Ultimo aggiornamento (usa il primo sensore come riferimento)
     if (this.lastUpdatedEl) {
-      if (config.show_last_updated) {
-        const ref = soc ?? power ?? current ?? voltage;
+      if (config.show_last_updated && sensors.length > 0) {
+        const ref = sensors[0].entity;
         if (ref?.last_updated) {
           const d = new Date(ref.last_updated);
           this.lastUpdatedEl.textContent = `Updated: ${d.toLocaleString()}`;
@@ -323,82 +346,55 @@ class WecoBatteryCard extends HTMLElement {
 
     let html = '';
 
-    if (mode === 'minimal') {
-      const socEntity = config.battery_soc ? ` data-entity="${config.battery_soc}"` : '';
-      const pwrEntity = config.battery_power ? ` data-entity="${config.battery_power}"` : '';
-      const status = this._chargeStatus(power);
-      html = `
-        <div class="minimal-row">
-          <div class="stat"${socEntity}>
-            <div class="soc-big">${this._val(soc)}<span style="font-size:0.5em;font-weight:normal;">${this._unit(soc)}</span></div>
-            <div class="soc-label">SOC</div>
-          </div>
-          <div class="power-pill"${pwrEntity}>
-            <div class="status-label" style="color:${status.color}">${status.icon} ${status.label}</div>
-            <div class="power-val" style="color:${status.color}">${this._val(power)}${this._unit(power)}</div>
-          </div>
-        </div>`;
+    if (sensors.length > 0) {
+      const cols = Math.min(sensors.length, 4);
+      html += `<div class="stats-row cols-${cols}">`;
+      sensors.forEach(({ id, entity }) => {
+        html += this._stat(entity, this._label(entity, id), id);
+      });
+      html += `</div>`;
+    }
 
-    } else if (mode === 'basic') {
-      html = `
-        <div class="stats-row cols-3">
-          ${this._stat(soc,     'SOC',     config.battery_soc)}
-          ${this._stat(power,   'Power',   config.battery_power)}
-          ${this._stat(current, 'Current', config.battery_current)}
-        </div>`;
+    // Cell grid — auto-rilevamento dal dispositivo (solo se abilitato)
+    const cellEntityIds = (config.show_cells !== false) && config.device_id
+      ? this._findCellEntities(config.device_id)
+      : [];
+    if (cellEntityIds.length > 0) {
+      interface CellData { n: string; id: string; v: number; b: boolean; }
+      const cells: CellData[] = cellEntityIds.map((vId: string, i: number) => {
+        const bId = vId.replace(/^sensor\./, 'binary_sensor.') + '_balance';
+        const v   = this._hass!.states[vId];
+        const b   = this._hass!.states[bId];
+        return { n: String(i + 1), id: vId, v: v ? parseFloat(v.state) : NaN, b: b?.state === 'on' };
+      });
 
-    } else {
-      html = `
-        <div class="stats-row cols-4">
-          ${this._stat(soc,     'SOC',     config.battery_soc)}
-          ${this._stat(power,   'Power',   config.battery_power)}
-          ${this._stat(current, 'Current', config.battery_current)}
-          ${this._stat(voltage, 'Voltage', config.battery_voltage)}
-        </div>`;
+      const vals = cells.map(c => c.v).filter(v => !isNaN(v));
+      const maxV = Math.max(...vals);
+      const minV = Math.min(...vals);
 
-      const firstCell = config.battery_cell_first;
-      if (firstCell) {
-        const m = firstCell.match(/^(.+?)(\d+)$/);
-        if (m) {
-          const base   = m[1];
-          const digits = m[2].length;
-
-          interface CellData { n: string; id: string; v: number; b: boolean; }
-          const cells: CellData[] = [];
-
-          for (let i = 1; i <= 16; i++) {
-            const n   = i.toString().padStart(digits, '0');
-            const vId = `${base}${n}`;
-            const bId = vId.replace(/^sensor\./, 'binary_sensor.') + '_balance';
-            const v   = this._hass!.states[vId];
-            const b   = this._hass!.states[bId];
-            if (v) cells.push({ n, id: vId, v: parseFloat(v.state), b: b?.state === 'on' });
-          }
-
-          if (cells.length > 0) {
-            const vals = cells.map(c => c.v).filter(v => !isNaN(v));
-            const maxV = Math.max(...vals);
-            const minV = Math.min(...vals);
-
-            html += `<div class="cell-grid">`;
-            cells.forEach(c => {
-              const isMax = vals.length > 1 && c.v === maxV;
-              const isMin = vals.length > 1 && c.v === minV;
-              const cls   = isMax ? 'volt-highest' : (isMin ? 'volt-lowest' : '');
-              html += `
-                <div class="cell-box ${c.b ? 'is-balancing' : ''}" data-entity="${c.id}">
-                  <div class="cell-name">C${c.n}</div>
-                  <div class="cell-volt ${cls}">${isNaN(c.v) ? '---' : c.v.toFixed(3)}</div>
-                  ${c.b ? '<div class="cell-balance">▲ bal</div>' : ''}
-                </div>`;
-            });
-            html += `</div>`;
-          }
-        }
-      }
+      html += `<div class="cell-grid">`;
+      cells.forEach(c => {
+        const isMax = vals.length > 1 && c.v === maxV;
+        const isMin = vals.length > 1 && c.v === minV;
+        const cls   = isMax ? 'volt-highest' : (isMin ? 'volt-lowest' : '');
+        html += `
+          <div class="cell-box ${c.b ? 'is-balancing' : ''}" data-entity="${c.id}">
+            <div class="cell-name">C${c.n}</div>
+            <div class="cell-volt ${cls}">${isNaN(c.v) ? '---' : c.v.toFixed(3)}</div>
+            ${c.b ? '<div class="cell-balance">▲ bal</div>' : ''}
+          </div>`;
+      });
+      html += `</div>`;
     }
 
     if (this.content) this.content.innerHTML = html;
+  }
+
+  // Usa friendly_name dell'entità; fallback all'ultima parte dell'entity_id
+  private _label(entity: HassEntity | undefined, entityId: string): string {
+    const fn = entity?.attributes?.friendly_name as string | undefined;
+    if (fn) return fn;
+    return entityId.split('.')[1]?.replace(/_/g, ' ') ?? entityId;
   }
 
   private _navigateToDevice(deviceId: string): void {
@@ -409,14 +405,6 @@ class WecoBatteryCard extends HTMLElement {
     }));
   }
 
-  private _chargeStatus(power?: HassEntity): { label: string; icon: string; color: string } {
-    const w = power ? parseFloat(power.state) : NaN;
-    if (isNaN(w))   return { label: '---',     icon: '—',  color: 'var(--secondary-text-color)' };
-    if (w > 0)      return { label: 'Charge',  icon: '▲',  color: '#73bf69' };
-    if (w < 0)      return { label: 'Discharge', icon: '▼',  color: '#f2495c' };
-    return          { label: 'Idle',        icon: '●',  color: 'var(--secondary-text-color)' };
-  }
-
   private _val(entity?: HassEntity): string {
     return entity ? entity.state : '---';
   }
@@ -425,17 +413,30 @@ class WecoBatteryCard extends HTMLElement {
     return (entity?.attributes?.unit_of_measurement as string) ?? '';
   }
 
+  // Trova le entità celle del dispositivo (es. *_cell_1 … *_cell_16), ordinate numericamente
+  private _findCellEntities(deviceId: string): string[] {
+    if (!this._hass?.entities) return [];
+    const cellPattern = /[_-]cell[_-]?(\d+)$/i;
+    return Object.values(this._hass.entities)
+      .filter(e => e.device_id === deviceId && cellPattern.test(e.entity_id))
+      .sort((a, b) => {
+        const na = parseInt(cellPattern.exec(a.entity_id)![1], 10);
+        const nb = parseInt(cellPattern.exec(b.entity_id)![1], 10);
+        return na - nb;
+      })
+      .map(e => e.entity_id);
+  }
+
   private _stat(entity: HassEntity | undefined, label: string, entityId?: string): string {
     const attr = entityId ? ` data-entity="${entityId}"` : '';
     return `<div class="stat"${attr}>
       <span class="stat-value">${this._val(entity)}${this._unit(entity)}</span>
-      <span class="stat-label">${label}</span>
+      <span class="stat-label" title="${label}">${label}</span>
     </div>`;
   }
 
   getCardSize(): number {
-    const m = this.config?.mode;
-    return m === 'minimal' ? 2 : m === 'basic' ? 3 : 8;
+    return this.config?.device_id ? 8 : 3;
   }
 }
 
