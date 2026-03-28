@@ -91,15 +91,14 @@ class WecoBatteryCardEditor extends HTMLElement {
       <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
         <ha-textfield id="f-title" label="Title"></ha-textfield>
 
-        <ha-device-picker id="f-device-id" label="MQTT Device"></ha-device-picker>
-
         <div style="font-size: 0.85em; color: var(--secondary-text-color); font-weight: 500;
                     border-top: 1px solid var(--divider-color); padding-top: 10px; margin-top: 2px;">
-          Sensors (up to 4)
+          MQTT Device
         </div>
         <p style="font-size:0.75em; color:var(--secondary-text-color); margin:-6px 0 0 0;">
-          Select the MQTT device first to filter available sensors.
+          Select the device to filter sensors and auto-detect cell voltages.
         </p>
+        <ha-device-picker id="f-device-id" label="MQTT Device"></ha-device-picker>
 
         <ha-entity-picker id="f-sensor-1" class="sensor-picker" label="Sensor 1" allow-custom-entity></ha-entity-picker>
         <ha-entity-picker id="f-sensor-2" class="sensor-picker" label="Sensor 2" allow-custom-entity></ha-entity-picker>
@@ -354,8 +353,9 @@ class WecoBatteryCard extends HTMLElement {
     }
 
     // Cell grid — auto-rilevamento dal dispositivo (solo se abilitato)
-    const cellEntityIds = (config.show_cells !== false) && config.device_id
-      ? this._findCellEntities(config.device_id)
+    const cellDeviceId = this._resolveCellDeviceId();
+    const cellEntityIds = (config.show_cells !== false) && cellDeviceId
+      ? this._findCellEntities(cellDeviceId)
       : [];
     if (cellEntityIds.length > 0) {
       interface CellData { n: string; id: string; v: number; b: boolean; }
@@ -409,6 +409,17 @@ class WecoBatteryCard extends HTMLElement {
 
   private _unit(entity?: HassEntity): string {
     return (entity?.attributes?.unit_of_measurement as string) ?? '';
+  }
+
+  // Restituisce il device_id da usare per le celle: config.device_id oppure
+  // quello del primo sensore configurato (fallback quando device_id non è impostato)
+  private _resolveCellDeviceId(): string | undefined {
+    if (this.config?.device_id) return this.config.device_id;
+    const firstSensor = this.config?.sensor_1 ?? this.config?.sensor_2 ?? this.config?.sensor_3 ?? this.config?.sensor_4;
+    if (firstSensor && this._hass?.entities) {
+      return this._hass.entities[firstSensor]?.device_id;
+    }
+    return undefined;
   }
 
   // Trova le entità celle del dispositivo (es. *_cell_1 … *_cell_16), ordinate numericamente
