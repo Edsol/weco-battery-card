@@ -51,15 +51,14 @@ class WecoBatteryCardEditor extends HTMLElement {
       <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
         <ha-textfield id="f-title" label="Title"></ha-textfield>
 
-        <ha-device-picker id="f-device-id" label="MQTT Device"></ha-device-picker>
-
         <div style="font-size: 0.85em; color: var(--secondary-text-color); font-weight: 500;
                     border-top: 1px solid var(--divider-color); padding-top: 10px; margin-top: 2px;">
-          Sensors (up to 4)
+          MQTT Device
         </div>
         <p style="font-size:0.75em; color:var(--secondary-text-color); margin:-6px 0 0 0;">
-          Select the MQTT device first to filter available sensors.
+          Select the device to filter sensors and auto-detect cell voltages.
         </p>
+        <ha-device-picker id="f-device-id" label="MQTT Device"></ha-device-picker>
 
         <ha-entity-picker id="f-sensor-1" class="sensor-picker" label="Sensor 1" allow-custom-entity></ha-entity-picker>
         <ha-entity-picker id="f-sensor-2" class="sensor-picker" label="Sensor 2" allow-custom-entity></ha-entity-picker>
@@ -194,15 +193,13 @@ class WecoBatteryCard extends HTMLElement {
           .header.has-link::after { content: '↗'; font-size: 0.7em; opacity: 0.6; }
           .last-updated { font-size: 0.72em; color: var(--secondary-text-color); margin-bottom: 12px; margin-top: 4px; }
 
-          .stats-row { display: grid; gap: 8px; background: rgba(128,128,128,0.08); padding: 12px 8px; border-radius: 8px; margin-bottom: 15px; }
+          .stats-row { display: grid; gap: 8px; background: rgba(128,128,128,0.08); padding: 12px 8px; border-radius: 8px; margin-bottom: 15px; overflow: hidden; }
           .stats-row.cols-1 { grid-template-columns: 1fr; }
           .stats-row.cols-2 { grid-template-columns: repeat(2, 1fr); }
           .stats-row.cols-3 { grid-template-columns: repeat(3, 1fr); }
           .stats-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
-          .stat        { text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-          .stat-value  { font-size: 1.2em; font-weight: bold; white-space: nowrap; }
-          .stat-label  { font-size: 0.7em; color: var(--secondary-text-color); text-transform: uppercase; margin-top: 4px;
-                         max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .stat        { text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; }
+          .stat-value  { font-size: 1.2em; font-weight: bold; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
           [data-entity] { cursor: pointer; }
           [data-entity]:hover { opacity: 0.75; }
@@ -256,9 +253,10 @@ class WecoBatteryCard extends HTMLElement {
         // Titolo
         if (this.titleEl) {
             this.titleEl.textContent = config.title ?? 'WECO Battery';
-            if (config.device_id) {
+            const deviceId = config.device_id ?? this._resolveCellDeviceId();
+            if (deviceId) {
                 this.titleEl.classList.add('has-link');
-                this.titleEl.onclick = () => this._navigateToDevice(config.device_id);
+                this.titleEl.onclick = () => this._navigateToDevice(deviceId);
             }
             else {
                 this.titleEl.classList.remove('has-link');
@@ -297,8 +295,9 @@ class WecoBatteryCard extends HTMLElement {
             html += `</div>`;
         }
         // Cell grid — auto-rilevamento dal dispositivo (solo se abilitato)
-        const cellEntityIds = (config.show_cells !== false) && config.device_id
-            ? this._findCellEntities(config.device_id)
+        const cellDeviceId = this._resolveCellDeviceId();
+        const cellEntityIds = (config.show_cells !== false) && cellDeviceId
+            ? this._findCellEntities(cellDeviceId)
             : [];
         if (cellEntityIds.length > 0) {
             const cells = cellEntityIds.map((vId, i) => {
@@ -347,6 +346,17 @@ class WecoBatteryCard extends HTMLElement {
     _unit(entity) {
         return entity?.attributes?.unit_of_measurement ?? '';
     }
+    // Restituisce il device_id da usare per le celle: config.device_id oppure
+    // quello del primo sensore configurato (fallback quando device_id non è impostato)
+    _resolveCellDeviceId() {
+        if (this.config?.device_id)
+            return this.config.device_id;
+        const firstSensor = this.config?.sensor_1 ?? this.config?.sensor_2 ?? this.config?.sensor_3 ?? this.config?.sensor_4;
+        if (firstSensor && this._hass?.entities) {
+            return this._hass.entities[firstSensor]?.device_id;
+        }
+        return undefined;
+    }
     // Trova le entità celle del dispositivo (es. *_cell_1 … *_cell_16), ordinate numericamente
     _findCellEntities(deviceId) {
         if (!this._hass?.entities)
@@ -363,9 +373,8 @@ class WecoBatteryCard extends HTMLElement {
     }
     _stat(entity, label, entityId) {
         const attr = entityId ? ` data-entity="${entityId}"` : '';
-        return `<div class="stat"${attr}>
+        return `<div class="stat"${attr} title="${label}">
       <span class="stat-value">${this._val(entity)}${this._unit(entity)}</span>
-      <span class="stat-label" title="${label}">${label}</span>
     </div>`;
     }
     getCardSize() {

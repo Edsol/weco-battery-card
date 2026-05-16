@@ -309,9 +309,10 @@ class WecoBatteryCard extends HTMLElement {
     // Titolo
     if (this.titleEl) {
       this.titleEl.textContent = config.title ?? 'WECO Battery';
-      if (config.device_id) {
+      const deviceId = config.device_id ?? this._resolveCellDeviceId();
+      if (deviceId) {
         this.titleEl.classList.add('has-link');
-        this.titleEl.onclick = () => this._navigateToDevice(config.device_id!);
+        this.titleEl.onclick = () => this._navigateToDevice(deviceId);
       } else {
         this.titleEl.classList.remove('has-link');
         this.titleEl.onclick = null;
